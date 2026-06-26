@@ -68,11 +68,13 @@ The model's job is structured: emit a schema-valid `QueryPlan`. The SFT data is 
 synthetic world with gold plans, and the prompts are imported from the serving code so training and
 serving can't drift apart.
 
-1. Push this repo to GitHub, then in Colab: **File → Open notebook → GitHub** →
-   [`notebooks/finetune_planner_colab.ipynb`](notebooks/finetune_planner_colab.ipynb).
+[![Fine-tune in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/priyankavlt/platform-agnostic-federated-search-with-fine-tuned-llm/blob/main/notebooks/finetune_planner_colab.ipynb) **fine-tune** &nbsp;
+[![Serve in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/priyankavlt/platform-agnostic-federated-search-with-fine-tuned-llm/blob/main/notebooks/serve_vllm_colab.ipynb) **serve**
+
+1. Click **Fine-tune in Colab** above.
 2. **Runtime → Change runtime type → A100** (Colab Pro). A free T4 runs a `qwen3.5-4b-smoke` profile
    automatically so you can test the pipeline first.
-3. Add Colab secrets (🔑): `GH_TOKEN` (read access to this private repo), optionally `HF_TOKEN`.
+3. Optional: add an `HF_TOKEN` Colab secret (🔑) to push the adapter to the Hugging Face Hub.
 4. **Run all.** The notebook generates the data, loads `unsloth/Qwen3.8-27B-unsloth-bnb-4bit`, scores the
    **base** model on the held-out test questions, runs QLoRA (LoRA r=16 on the language layers, loss on the
    assistant turn only), scores the **fine-tuned** model on the same questions, shows a before/after table
