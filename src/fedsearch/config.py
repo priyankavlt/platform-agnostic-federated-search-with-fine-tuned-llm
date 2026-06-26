@@ -40,6 +40,15 @@ class Settings(BaseSettings):
 
     top_k: int = 10
 
+    # Aggregation agent (model-agnostic). A bare model id uses the OpenAI-compatible endpoint below
+    # (OpenCode Go by default; also vLLM, Ollama, OpenRouter, ...). A "provider:model" id such as
+    # "anthropic:claude-sonnet-5-5" or "openai:gpt-5.6" is handed to PydanticAI's own provider registry.
+    agent_model: str = "deepseek-v4.1-flash"
+    agent_base_url: str = "https://opencode.ai/inference/go/openai/v1"
+    agent_api_key: str = ""
+    agent_user_agent: str = "fedsearch-agent/0.1"
+    catalog_config: Path = Path("configs/catalog.yaml")
+
 
 @lru_cache
 def get_settings() -> Settings:

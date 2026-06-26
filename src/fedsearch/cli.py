@@ -21,17 +21,22 @@ console = Console()
 
 @app.callback()
 def _main(verbose: Annotated[bool, typer.Option("-v")] = False) -> None:
+    import os
+
+    os.environ.setdefault("PYDANTIC_AI_NO_BANNER", "1")
     logging.basicConfig(level=logging.INFO if verbose else logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
 
 
 @app.command()
 def seed(sql_url: Annotated[str | None, typer.Option(help="CRM database URL (default: SQLite in data dir)")] = None,
+         billing_url: Annotated[str | None, typer.Option(help="Billing database URL, e.g. Supabase Postgres "
+                                                         "(default: SQLite in data dir)")] = None,
          seed: int = 7) -> None:
     """Generate the synthetic multi-system company and labelled queries."""
     from fedsearch.seed.write import write_all
 
     s = get_settings()
-    console.print_json(data=write_all(Path(s.data_dir), sql_url, seed))
+    console.print_json(data=write_all(Path(s.data_dir), sql_url, seed, billing_url))
 
 
 @app.command()
@@ -85,6 +90,34 @@ def search(query: str, k: Annotated[int, typer.Option("-k", "--k")] = 8, as_json
     console.print(t)
     if resp.answer:
         console.print(f"[bold]answer[/bold] {escape(resp.answer.answer)}")
+
+
+@app.command()
+def ask(question: str, show_sql: Annotated[bool, typer.Option("--sql/--no-sql")] = True) -> None:
+    """Ask the federated search & aggregation agent (SQL across systems + text search)."""
+    import uuid
+
+    from pydantic_ai.messages import ToolCallPart, ToolReturnPart
+
+    from fedsearch.agent.core import build_agent, build_deps, run_settings
+
+    s = get_settings()
+    deps = build_deps(s)
+    agent = build_agent(s, deps.federation)
+    result = agent.run_sync(question, deps=deps, model_settings=run_settings(s, str(uuid.uuid4())))
+    for msg in result.all_messages():
+        for part in msg.parts:
+            if isinstance(part, ToolCallPart):
+                console.print(f"[dim]-> {part.tool_name}({escape(part.args_as_json_str()[:300])})[/dim]")
+            elif isinstance(part, ToolReturnPart) and part.tool_name == "run_sql":
+                r = json.loads(part.content) if isinstance(part.content, str) else part.content
+                t = Table(*r["columns"], title=f"{r['title']}  [dim]({', '.join(r['systems'])}, {r['elapsed_ms']} ms)[/dim]")
+                for row in r["rows"][:15]:
+                    t.add_row(*("" if v is None else str(v) for v in row))
+                console.print(t)
+                if show_sql:
+                    console.print(f"[dim]{escape(r['sql'])}[/dim]")
+    console.print(f"\n{escape(result.output)}")
 
 
 @app.command()

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine
 
+from fedsearch.seed.billing import write_billing
 from fedsearch.seed.queries import generate_queries, split
 from fedsearch.seed.world import World, build_world
 
@@ -33,11 +34,13 @@ def write_crm(world: World, sql_url: str) -> None:
         conn.execute(opportunities.insert(), world.opportunities)
 
 
-def write_all(data_dir: Path, sql_url: str | None = None, seed: int = 7) -> dict[str, int]:
+def write_all(data_dir: Path, sql_url: str | None = None, seed: int = 7,
+              billing_url: str | None = None) -> dict[str, int]:
     world = build_world(seed=seed)
     data_dir.mkdir(parents=True, exist_ok=True)
 
     write_crm(world, sql_url or f"sqlite:///{data_dir / 'crm.db'}")
+    billing = write_billing(world, billing_url or f"sqlite:///{data_dir / 'billing.db'}")
 
     (data_dir / "support").mkdir(exist_ok=True)
     (data_dir / "support" / "tickets.json").write_text(json.dumps(world.tickets, indent=1))
@@ -61,6 +64,7 @@ def write_all(data_dir: Path, sql_url: str | None = None, seed: int = 7) -> dict
 
     return {
         "customers": len(world.customers), "opportunities": len(world.opportunities),
+        **{f"billing_{k}": v for k, v in billing.items()},
         "tickets": len(world.tickets), "pages": len(world.pages), "messages": len(world.messages),
         **{f"queries_{k}": len(v) for k, v in splits.items()},
     }

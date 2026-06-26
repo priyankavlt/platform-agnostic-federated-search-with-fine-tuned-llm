@@ -28,6 +28,46 @@ without knowing which system holds the data.
                     isn't verbatim in the cited doc and re-asks the model)
 ```
 
+## New: federated search & aggregation agent (POC)
+
+Sales, support and engineering staff often answer cross-team questions by asking each team for an export and
+merging spreadsheets by hand. Here you ask once, in plain English. The agent queries each system **live**,
+joins the results, and shows the table, the SQL and the systems it touched.
+
+```
+ Next.js + CopilotKit chat  ──AG-UI──►  PydanticAI agent (any model; OpenCode Go by default)
+   result tables · SQL · CSV                │ run_sql(duckdb_sql)            │ search_text(query)
+                                            ▼                                ▼
+                       DuckDB federation (configs/catalog.yaml)      hybrid BM25+dense index
+                       ├─ CRM       Postgres         (ATTACH, live)    tickets · runbooks · docs · chat
+                       ├─ Billing   Supabase/Postgres (ATTACH, live)
+                       └─ Support   ticket export    (synced table)
+```
+
+- **The LLM never does the arithmetic.** It writes one DuckDB `SELECT`. Guardrails (sqlglot) allow only
+  catalog tables. They block DDL/DML, multiple statements and table functions, and add a `LIMIT`. File access
+  is disabled after setup, and a rejected query goes back to the model to fix.
+- **Cross-system keys are realistic:** billing knows customers only by email domain, support only by CRM id.
+- **Model-agnostic:** set `FEDSEARCH_AGENT_MODEL`. A bare id uses any OpenAI-compatible endpoint
+  (`FEDSEARCH_AGENT_BASE_URL`: OpenCode Go, vLLM, Ollama, OpenRouter). `anthropic:...`, `openai:...` or
+  `google-gla:...` use PydanticAI's built-in providers.
+
+```bash
+docker compose up -d postgres                              # Postgres for the CRM
+export FEDSEARCH_CRM_URL=postgresql+psycopg://crm:crm@localhost:5432/crm
+uv sync && uv run fedsearch seed --sql-url $FEDSEARCH_CRM_URL   # + billing (SQLite, or --billing-url <supabase>)
+uv run fedsearch mock-support-api &  uv run fedsearch ingest     # text index for search_text
+echo "FEDSEARCH_AGENT_API_KEY=<your OpenCode Go key>" >> .env
+
+uv run fedsearch ask "Which enterprise customers have overdue invoices and how many open tickets do they have?"
+
+uv run fedsearch serve --port 8080                         # AG-UI endpoint at /agui
+cd web && npm install && npm run dev                       # http://localhost:3000
+```
+
+Roadmap (see [docs/PLAN.md](docs/PLAN.md)): Cassandra usage events, Gmail and Notion, native queries with
+human approval, numeric-grounding checks, and a gold-question eval set.
+
 ### Why the data is hard on purpose
 The synthetic company (`seed/world.py`) is fragmented like real enterprise data: support tickets carry a
 `customer_id` but never the company name; chat messages mention ticket ids but not the customer or product.

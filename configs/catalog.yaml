@@ -1,0 +1,91 @@
+# Semantic layer for the aggregation agent. The agent can only query the tables declared here; DuckDB
+# attaches each system read-only and queries it live (filters and projections are pushed down).
+# ${VAR:-default} is expanded from the environment. Adding a database = adding a block here.
+
+systems:
+  crm:
+    label: CRM (Postgres)
+    kind: postgres_or_sqlite
+    url: ${FEDSEARCH_CRM_URL:-sqlite:///data/crm.db}
+  billing:
+    label: Billing (Supabase / Postgres)
+    kind: postgres_or_sqlite
+    url: ${FEDSEARCH_BILLING_URL:-sqlite:///data/billing.db}
+  support:
+    label: Support desk (Zendesk-style tickets)
+    kind: json
+    path: ${FEDSEARCH_DATA_DIR:-data}/support/tickets.json
+
+tables:
+  customers:
+    system: crm
+    source: customers
+    description: One row per customer account, owned by sales.
+    columns:
+      id: CRM customer id, e.g. CUST-0007
+      name: company name
+      domain: company email domain, e.g. globex.com (the key the billing system uses)
+      tier: enterprise | growth | starter
+      region: NA | EMEA | APAC | LATAM
+      account_manager: sales owner
+      health: healthy | at risk | churn risk
+      arr_usd: annual recurring revenue in USD, as recorded by sales
+      products: comma-separated product slugs
+      renewal_date: ISO date string (YYYY-MM-DD)
+  opportunities:
+    system: crm
+    source: opportunities
+    description: Sales pipeline, one row per deal.
+    columns:
+      id: opportunity id
+      customer_id: -> customers.id
+      product: product slug
+      stage: prospecting | negotiation | closed won | closed lost
+      amount_usd: deal size in USD
+      close_date: ISO date string
+      notes: free text
+  subscriptions:
+    system: billing
+    source: subscriptions
+    description: Billing subscriptions, one per customer. Billing knows customers only by email domain.
+    columns:
+      id: subscription id
+      customer_domain: -> customers.domain
+      plan: Scale | Team | Starter
+      seats: licensed seats
+      mrr_usd: monthly recurring revenue billed, in USD
+      status: active | past_due
+      started_on: date
+  invoices:
+    system: billing
+    source: invoices
+    description: Monthly invoices, Jun-Nov 2026.
+    columns:
+      id: invoice id
+      customer_domain: -> customers.domain
+      amount_usd: invoice amount in USD
+      issued_on: date
+      due_on: date
+      status: paid | open | overdue
+  tickets:
+    system: support
+    source: tickets
+    description: Support tickets filed by customers.
+    columns:
+      id: ticket id, e.g. ZD-1042
+      customer_id: -> customers.id
+      requester_email: who filed it
+      product: product slug
+      subject: short summary
+      error_code: e.g. E-SSO-112
+      status: open | pending | solved
+      priority: low | normal | high | urgent
+      assignee: engineer handle
+      created_at: timestamp
+      updated_at: timestamp
+
+joins:
+  - customers.id = opportunities.customer_id
+  - customers.id = tickets.customer_id
+  - customers.domain = subscriptions.customer_domain
+  - customers.domain = invoices.customer_domain
