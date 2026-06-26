@@ -2,4 +2,3 @@
 
 # Platform-Agnostic Federated Search with Fine-Tuned LLM
 
-Created in [T3 Code](https://t3.codes).
