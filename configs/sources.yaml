@@ -1,0 +1,90 @@
+# Heterogeneous sources. Adding a system = adding a block here (no code changes).
+# ${VAR:-default} is expanded from the environment.
+
+sources:
+  crm:  # relational database (Postgres in docker-compose; SQLite fallback)
+    connector: sql
+    url: ${FEDSEARCH_CRM_URL:-sqlite:///data/crm.db}
+    streams:
+      customers:
+        primary_key: id
+        query: SELECT * FROM customers
+        title: "{name} — {tier} customer"
+        text: >-
+          {name} ({id}, {domain}) is a {tier} customer in {region}. Account manager: {account_manager}.
+          Account health: {health}. ARR: {arr_usd} USD. Products: {products}. Renewal date: {renewal_date}.
+        url: "https://crm.example.com/accounts/{id}"
+        entity_fields: {customer: id}
+        aliases: {type: customer, id: id, fields: [name, domain], display: name}
+        metadata_fields: [tier, region, health, account_manager, renewal_date]
+      opportunities:
+        primary_key: id
+        query: SELECT * FROM opportunities
+        title: "Opportunity {id} ({stage})"
+        text: >-
+          Opportunity {id} for customer {customer_id}: {product}, stage {stage}, amount {amount_usd} USD,
+          expected close {close_date}. {notes}
+        url: "https://crm.example.com/opportunities/{id}"
+        entity_fields: {customer: customer_id, product: product}
+        metadata_fields: [stage, amount_usd, close_date]
+
+  support:  # REST API (Zendesk-style)
+    connector: http
+    base_url: ${FEDSEARCH_SUPPORT_URL:-http://localhost:8081}
+    streams:
+      tickets:
+        path: /api/v2/tickets
+        records_field: tickets
+        primary_key: id
+        cursor_field: updated_at
+        cursor_param: updated_since
+        title: "{id}: {subject}"
+        text: >-
+          Ticket {id} from {requester_email} ({status}, {priority} priority, assigned to {assignee}).
+          {description}
+        url: "https://support.example.com/tickets/{id}"
+        entity_fields: {ticket: id, customer: customer_id, product: product, error_code: error_code}
+        metadata_fields: [status, priority, assignee, created_at, error_code]
+
+  docs:  # wiki / knowledge base export (Markdown)
+    connector: files
+    streams:
+      pages:
+        root: ${FEDSEARCH_DATA_DIR:-data}/docs
+        glob: "**/*.md"
+        format: markdown
+        primary_key: id
+        title: "{title}"
+        text: "{body}"
+        url: "https://wiki.example.com/{path}"
+
+  chat:  # Slack-style export (JSONL)
+    connector: files
+    streams:
+      messages:
+        root: ${FEDSEARCH_DATA_DIR:-data}/chat
+        glob: "*.jsonl"
+        format: jsonl
+        primary_key: id
+        title: "{channel} — {user}"
+        text: "{text}"
+        url: "https://chat.example.com/{channel}/{id}"
+        metadata_fields: [channel, user, ts]
+
+  # Any Airbyte source works the same way (uv sync --extra airbyte):
+  # github:
+  #   connector: airbyte
+  #   airbyte_source: source-github
+  #   config: {repositories: ["acme/platform"], credentials: {personal_access_token: "${GITHUB_TOKEN}"}}
+  #   streams:
+  #     issues: {primary_key: id, title: "#{number} {title}", text: "{body}", url: "{html_url}"}
+
+# Static vocabulary for entity linking (customers are learned dynamically from the CRM).
+gazetteer:
+  product:
+    billing-export: {name: Billing Export, aliases: [billing exports, invoice export]}
+    sso: {name: Single Sign-On, aliases: [sso, saml]}
+    webhooks: {name: Webhooks, aliases: [webhook]}
+    analytics-dashboard: {name: Analytics Dashboard, aliases: [dashboards]}
+    mobile-sync: {name: Mobile Sync, aliases: [offline sync]}
+    api-gateway: {name: API Gateway}
