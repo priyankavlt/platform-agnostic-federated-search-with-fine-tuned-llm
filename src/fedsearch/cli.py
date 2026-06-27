@@ -101,7 +101,7 @@ def ask(question: str, show_sql: Annotated[bool, typer.Option("--sql/--no-sql")]
     """Ask the federated search & aggregation agent (SQL across systems + text search)."""
     import uuid
 
-    from pydantic_ai.messages import ToolCallPart, ToolReturnPart
+    from pydantic_ai.messages import RetryFeedbackPart, ToolCallPart, ToolReturnPart
 
     from fedsearch.agent.core import build_agent, build_deps, run_settings
 
@@ -111,7 +111,9 @@ def ask(question: str, show_sql: Annotated[bool, typer.Option("--sql/--no-sql")]
     result = agent.run_sync(question, deps=deps, model_settings=run_settings(s, str(uuid.uuid4())))
     for msg in result.all_messages():
         for part in msg.parts:
-            if isinstance(part, ToolCallPart):
+            if isinstance(part, RetryFeedbackPart):
+                console.print(f"[yellow]guardrail -> {escape(part.model_response()[:240])}[/yellow]")
+            elif isinstance(part, ToolCallPart):
                 console.print(f"[dim]-> {part.tool_name}({escape(part.args_as_json_str()[:300])})[/dim]")
             elif isinstance(part, ToolReturnPart) and part.tool_name == "run_sql":
                 r = json.loads(part.content) if isinstance(part.content, str) else part.content

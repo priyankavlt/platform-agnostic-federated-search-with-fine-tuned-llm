@@ -19,6 +19,7 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.settings import ModelSettings
 
+from fedsearch.agent.grounding import ungrounded
 from fedsearch.config import Settings
 from fedsearch.federation.duck import Federation
 from fedsearch.federation.guard import SQLRejected
@@ -37,6 +38,8 @@ Tools:
 
 Rules:
 - Never compute or guess numbers yourself; every number you state must come from a tool result.
+  Totals, differences, percentages, averages and day counts must be computed in SQL. An automatic check
+  rejects any answer containing a number that no tool returned.
 - Prefer one well-built SQL query over many small ones. If a query is rejected or errors, fix it and retry.
 - Dates are ISO strings in CRM tables (compare as strings or CAST to DATE); billing dates are DATEs.
   Today is {today}.
@@ -77,6 +80,23 @@ def build_agent(settings: Settings, federation: Federation, today: str = "2026-1
         retries=3,
         name="fedsearch",
     )
+
+    today_numbers = [float(x) for x in today.split("-")]
+
+    @agent.output_validator
+    def numbers_are_grounded(ctx: RunContext[AgentDeps], output: str) -> str:
+        if ctx.partial_output:  # streaming chunk; check the finished answer only
+            return output
+        bad = ungrounded(output, ctx.messages, today_numbers)
+        if not bad:
+            return output
+        if ctx.retry < ctx.max_retries:
+            raise ModelRetry(
+                f"Numeric grounding check failed: {', '.join(bad)} do not appear in any tool result. "
+                "Do not calculate numbers yourself: compute them with run_sql (totals, differences, "
+                "percentages, day counts), then answer using exactly the returned values."
+            )
+        return output + f"\n\n> ⚠️ Unverified numbers (not found in any query result): {', '.join(bad)}"
 
     @agent.tool
     def run_sql(ctx: RunContext[AgentDeps], sql: str, title: str) -> dict:

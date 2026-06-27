@@ -83,3 +83,28 @@ async def test_agent_runs_sql_then_answers(fed, settings):
     assert calls == ["bad", "good"]
     assert result.output == "4 regions. Sources: CRM"
     assert json.dumps(fed.describe())  # catalog is serialisable for the instructions
+
+
+async def test_agent_rejects_ungrounded_numbers(fed, settings):
+    """An answer with a number no tool returned is sent back; the corrected answer passes."""
+    seen_retry: list[str] = []
+
+    def model(messages, info: AgentInfo) -> ModelResponse:
+        returns = [p for m in messages for p in m.parts if isinstance(p, ToolReturnPart)]
+        retries = [str(getattr(p, "content", "")) for m in messages for p in m.parts
+                   if "Numeric grounding check failed" in str(getattr(p, "content", ""))]
+        if not returns:
+            return ModelResponse(parts=[ToolCallPart("run_sql", {
+                "sql": "SELECT count(*) AS n FROM customers", "title": "Customers"})])
+        if not retries:
+            return ModelResponse(parts=[TextPart("There are 41 customers.")])  # made up
+        seen_retry.append(retries[-1])
+        n = json.loads(returns[-1].content)["rows"][0][0] if isinstance(returns[-1].content, str) \
+            else returns[-1].content["rows"][0][0]
+        return ModelResponse(parts=[TextPart(f"There are {n} customers.")])
+
+    agent = build_agent(settings, fed)
+    with agent.override(model=FunctionModel(model)):
+        result = await agent.run("How many customers?", deps=AgentDeps(fed))
+    assert result.output == "There are 40 customers."
+    assert "41" in seen_retry[0] and "run_sql" in seen_retry[0]
