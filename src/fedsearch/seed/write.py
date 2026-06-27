@@ -13,7 +13,9 @@ from fedsearch.seed.world import World, build_world
 
 
 def write_crm(world: World, sql_url: str) -> None:
-    engine = create_engine(sql_url)
+    from fedsearch.seed.billing import sqlalchemy_url
+
+    engine = create_engine(sqlalchemy_url(sql_url))
     md = MetaData()
     customers = Table(
         "customers", md,

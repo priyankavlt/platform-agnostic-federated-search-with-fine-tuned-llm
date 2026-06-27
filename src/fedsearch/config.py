@@ -6,6 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -52,4 +53,6 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    # Also export .env to os.environ: configs/*.yaml expand ${FEDSEARCH_*} from the process environment.
+    load_dotenv(override=False)
     return Settings()

@@ -33,9 +33,13 @@ def seed(sql_url: Annotated[str | None, typer.Option(help="CRM database URL (def
                                                          "(default: SQLite in data dir)")] = None,
          seed: int = 7) -> None:
     """Generate the synthetic multi-system company and labelled queries."""
+    import os
+
     from fedsearch.seed.write import write_all
 
     s = get_settings()
+    sql_url = sql_url or os.environ.get("FEDSEARCH_CRM_URL")
+    billing_url = billing_url or os.environ.get("FEDSEARCH_BILLING_URL")
     console.print_json(data=write_all(Path(s.data_dir), sql_url, seed, billing_url))
 
 

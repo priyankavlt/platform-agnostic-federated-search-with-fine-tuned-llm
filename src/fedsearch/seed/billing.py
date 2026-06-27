@@ -20,8 +20,10 @@ INVOICE_MONTHS = [date(2026, m, 1) for m in range(6, 12)]  # Jun..Nov 2026
 def build_billing(world: World, seed: int = 11) -> dict[str, list[dict]]:
     rng = random.Random(seed)
     subs, invoices = [], []
+    # Systems drift: some deals got a discount or seat upgrade that only billing knows about.
+    drift = {c["id"]: rng.choice([0.8, 0.85, 1.15, 1.25]) for c in rng.sample(world.customers, 7)}
     for c in world.customers:
-        monthly = round(c["arr_usd"] / 12)
+        monthly = round(c["arr_usd"] / 12 * drift.get(c["id"], 1.0))
         subs.append({
             "id": f"sub_{c['id'].lower()}",
             "customer_domain": c["domain"],
@@ -46,9 +48,17 @@ def build_billing(world: World, seed: int = 11) -> dict[str, list[dict]]:
     return {"subscriptions": subs, "invoices": invoices}
 
 
+def sqlalchemy_url(url: str) -> str:
+    """Plain ``postgresql://`` URLs (as Supabase shows them) -> the psycopg 3 driver SQLAlchemy should use."""
+    for prefix in ("postgresql://", "postgres://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url.removeprefix(prefix)
+    return url
+
+
 def write_billing(world: World, url: str, seed: int = 11) -> dict[str, int]:
     data = build_billing(world, seed)
-    engine = create_engine(url)
+    engine = create_engine(sqlalchemy_url(url))
     md = MetaData()
     subscriptions = Table(
         "subscriptions", md,
